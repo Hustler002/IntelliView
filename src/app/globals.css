@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens ───────────────────────────────────────────────
+   IntelliView design language: professional, calm, focused.
+   Deep navy primary, warm amber accents, green/red for status only.
+   ───────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-navy-50: #f0f3f8;
+  --color-navy-100: #dce3ef;
+  --color-navy-200: #b8c7df;
+  --color-navy-300: #8da5c8;
+  --color-navy-400: #6383b0;
+  --color-navy-500: #3e5f8a;
+  --color-navy-600: #2e4a6e;
+  --color-navy-700: #243558;
+  --color-navy-800: #1f2f4d;
+  --color-navy-900: #1b2a4a;
+  --color-navy-950: #111b30;
+
+  --color-amber-50: #fef9ee;
+  --color-amber-100: #fdf0d3;
+  --color-amber-200: #fbe0a6;
+  --color-amber-300: #f7cb6e;
+  --color-amber-400: #f3b13d;
+  --color-amber-500: #e8a33d;
+  --color-amber-600: #d48a24;
+  --color-amber-700: #b06c1d;
+  --color-amber-800: #8f561f;
+  --color-amber-900: #76481d;
+
+  --color-success: #2f9e5b;
+  --color-success-light: #d4edda;
+  --color-alert: #d64545;
+  --color-alert-light: #f8d7da;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Base Layer ──────────────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-navy-950);
+  color: var(--color-navy-50);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Focus States (accessibility) ────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--color-amber-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Custom Scrollbar ────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-navy-900);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-navy-600);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-navy-500);
+}
+
+/* ─── Animations ──────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 163, 61, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(232, 163, 61, 0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-navy-800) 25%,
+    var(--color-navy-700) 50%,
+    var(--color-navy-800) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ─── Glass Card Effect ───────────────────────────────────────── */
+
+.glass-card {
+  background: rgba(27, 42, 74, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.glass-card-hover:hover {
+  background: rgba(27, 42, 74, 0.8);
+  border-color: rgba(232, 163, 61, 0.2);
+  transition: all 0.2s ease;
+}
+
+/* ─── Dropzone States ─────────────────────────────────────────── */
+
+.dropzone {
+  border: 2px dashed var(--color-navy-500);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.dropzone:hover {
+  border-color: var(--color-amber-500);
+  background: rgba(232, 163, 61, 0.04);
+}
+
+.dropzone-active {
+  border-color: var(--color-amber-500);
+  background: rgba(232, 163, 61, 0.08);
+  box-shadow: 0 0 0 4px rgba(232, 163, 61, 0.1);
+}
+
+.dropzone-error {
+  border-color: var(--color-alert);
+  background: rgba(214, 69, 69, 0.04);
+}
