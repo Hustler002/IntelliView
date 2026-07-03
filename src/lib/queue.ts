@@ -63,3 +63,24 @@ export function getParseJDQueue(): Queue {
   }
   return _parseJDQueue;
 }
+
+// ── Generate Questions Queue ─────────────────────────────────────
+let _generateQuestionsQueue: Queue | null = null;
+
+export function getGenerateQuestionsQueue(): Queue {
+  if (!_generateQuestionsQueue) {
+    _generateQuestionsQueue = new Queue("generate-questions", {
+      connection: getConnectionConfig(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 3000, // 3s → 6s → 12s (longer for LLM calls)
+        },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
+      },
+    });
+  }
+  return _generateQuestionsQueue;
+}

@@ -3,6 +3,8 @@ import mongoose, { Schema, Document, Model, Types } from "mongoose";
 export type SessionStatus =
   | "parsing"
   | "generating_questions"
+  | "questions_ready"
+  | "questions_failed"
   | "ready"
   | "in_progress"
   | "completed"
@@ -42,6 +44,8 @@ const InterviewSessionSchema = new Schema<IInterviewSession>(
       enum: [
         "parsing",
         "generating_questions",
+        "questions_ready",
+        "questions_failed",
         "ready",
         "in_progress",
         "completed",

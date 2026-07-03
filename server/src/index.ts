@@ -2,9 +2,12 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import IORedis from "ioredis";
+import { Queue } from "bullmq";
 import { connectDB } from "./lib/db";
 import { createParseResumeWorker } from "./workers/parseResume";
 import { createParseJDWorker } from "./workers/parseJD";
+import { createGenerateQuestionsWorker } from "./workers/generateQuestions";
+import { setGenerateQuestionsQueue } from "./lib/sessionStatusUpdater";
 
 // Register Mongoose models before any worker starts processing.
 // Uses server-local model definitions (see lib/models.ts for rationale).
@@ -27,11 +30,36 @@ async function main() {
 
   console.log("[Server] Connected to Redis");
 
+  // ── Create the generate-questions queue for auto-chaining ─────
+  // The sessionStatusUpdater needs this to enqueue question generation
+  // jobs after both parsers complete.
+  const generateQuestionsQueue = new Queue("generate-questions", {
+    connection: {
+      host: new URL(redisUrl).hostname || "localhost",
+      port: parseInt(new URL(redisUrl).port || "6379", 10),
+      password: new URL(redisUrl).password || undefined,
+      maxRetriesPerRequest: null,
+    },
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 3000, // 3s → 6s → 12s (longer than parsers — LLM calls are heavier)
+      },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 50 },
+    },
+  });
+
+  // Wire the queue into the status updater for auto-chaining
+  setGenerateQuestionsQueue(generateQuestionsQueue);
+
   // ── Start BullMQ Workers ──────────────────────────────────────
   const resumeWorker = createParseResumeWorker(redisConnection);
   const jdWorker = createParseJDWorker(redisConnection);
+  const questionsWorker = createGenerateQuestionsWorker(redisConnection);
 
-  console.log("[Server] Workers started: parse-resume, parse-jd");
+  console.log("[Server] Workers started: parse-resume, parse-jd, generate-questions");
 
   // ── Express App (health check + future SSE endpoint) ──────────
   const app = express();
@@ -45,6 +73,7 @@ async function main() {
       workers: {
         parseResume: resumeWorker.isRunning(),
         parseJD: jdWorker.isRunning(),
+        generateQuestions: questionsWorker.isRunning(),
       },
       timestamp: new Date().toISOString(),
     });
@@ -61,6 +90,8 @@ async function main() {
     console.log("[Server] Shutting down...");
     await resumeWorker.close();
     await jdWorker.close();
+    await questionsWorker.close();
+    await generateQuestionsQueue.close();
     await redisConnection.quit();
     process.exit(0);
   };
