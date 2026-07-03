@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { Queue } from "bullmq";
 
 /**
  * Session status updater.
@@ -6,10 +7,21 @@ import mongoose from "mongoose";
  * After each worker completes (resume or JD parsing), this checks whether
  * both are done and updates the InterviewSession status accordingly.
  *
+ * When both parsers succeed, it auto-chains to the generate-questions worker
+ * by enqueuing a job on the "generate-questions" queue. This creates the
+ * pipeline: parse → generate questions → preview.
+ *
  * The models are imported by name to avoid circular dependencies with
  * the worker files — both the worker and this module need Mongoose models,
  * so we access them via mongoose.model() rather than direct imports.
  */
+
+// Lazy-initialized queue reference — set by the server entry point
+let _generateQuestionsQueue: Queue | null = null;
+
+export function setGenerateQuestionsQueue(queue: Queue): void {
+  _generateQuestionsQueue = queue;
+}
 
 export async function updateSessionStatus(sessionId: string): Promise<void> {
   // Access models by registered name (avoids import order issues)
@@ -51,12 +63,29 @@ export async function updateSessionStatus(sessionId: string): Promise<void> {
 
     console.log(`[StatusUpdater] Session ${sessionId} → parse_failed`);
   } else if (resumeDone && jdDone) {
-    // Both succeeded — mark session as ready
+    // Both succeeded — transition to generating_questions and enqueue the job
     await InterviewSession.findByIdAndUpdate(sessionId, {
-      status: "ready",
+      status: "generating_questions",
     });
 
-    console.log(`[StatusUpdater] Session ${sessionId} → ready`);
+    console.log(`[StatusUpdater] Session ${sessionId} → generating_questions`);
+
+    // Auto-chain: enqueue question generation
+    if (_generateQuestionsQueue) {
+      await _generateQuestionsQueue.add("generate-questions", {
+        sessionId,
+        resumeProfileId: resume._id.toString(),
+        jobDescriptionId: jd._id.toString(),
+      });
+
+      console.log(
+        `[StatusUpdater] Enqueued generate-questions job for session ${sessionId}`
+      );
+    } else {
+      console.error(
+        `[StatusUpdater] generate-questions queue not initialized — cannot auto-chain for session ${sessionId}`
+      );
+    }
   }
   // Otherwise, at least one is still parsing — no update needed
 }

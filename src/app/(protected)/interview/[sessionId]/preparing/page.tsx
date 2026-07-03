@@ -24,6 +24,7 @@ interface StatusResponse {
   resumeStatus: string;
   jdStatus: string;
   failureReason: string | null;
+  questionsGenerated?: number;
 }
 
 export default function PreparingPage() {
@@ -47,11 +48,11 @@ export default function PreparingPage() {
       const data: StatusResponse = await res.json();
       setStatusData(data);
 
-      // Auto-navigate when ready
-      if (data.status === "ready" || data.status === "generating_questions") {
+      // Auto-navigate when questions are ready
+      if (data.status === "questions_ready") {
         // Small delay for the "ready" animation to be visible
         setTimeout(() => {
-          router.push(`/interview/${sessionId}`);
+          router.push(`/interview/${sessionId}/preview`);
         }, 1200);
       }
     } catch {
@@ -75,6 +76,8 @@ export default function PreparingPage() {
     const resumeStatus = statusData?.resumeStatus || "parsing";
     const jdStatus = statusData?.jdStatus || "parsing";
     const sessionStatus = statusData?.status || "parsing";
+
+    const bothParsed = resumeStatus === "parsed" && jdStatus === "parsed";
 
     const resumeStep: Step = {
       id: "resume",
@@ -114,22 +117,30 @@ export default function PreparingPage() {
               : "pending",
     };
 
-    const readyStep: Step = {
-      id: "ready",
-      label: "Preparing your interview",
+    const questionsStep: Step = {
+      id: "questions",
+      label: "Generating your questions",
       description:
-        sessionStatus === "ready" || sessionStatus === "generating_questions"
-          ? "Your interview is ready!"
-          : "Generating tailored questions…",
+        sessionStatus === "questions_ready"
+          ? `${statusData?.questionsGenerated || 10} tailored questions ready!`
+          : sessionStatus === "questions_failed"
+            ? "Failed to generate questions"
+            : sessionStatus === "generating_questions"
+              ? "Crafting questions from your resume × JD pairing…"
+              : "Waiting for parsing to complete…",
       status:
-        sessionStatus === "ready" || sessionStatus === "generating_questions"
+        sessionStatus === "questions_ready"
           ? "completed"
-          : resumeStatus === "parsed" && jdStatus === "parsed"
-            ? "active"
-            : "pending",
+          : sessionStatus === "questions_failed"
+            ? "failed"
+            : sessionStatus === "generating_questions"
+              ? "active"
+              : bothParsed
+                ? "active"
+                : "pending",
     };
 
-    return [resumeStep, jdStep, readyStep];
+    return [resumeStep, jdStep, questionsStep];
   };
 
   const handleRetry = async () => {
@@ -147,7 +158,9 @@ export default function PreparingPage() {
     }
   };
 
-  const isFailed = statusData?.status === "parse_failed";
+  const isFailed =
+    statusData?.status === "parse_failed" ||
+    statusData?.status === "questions_failed";
 
   return (
     <div className="max-w-lg mx-auto py-16 animate-fade-in">

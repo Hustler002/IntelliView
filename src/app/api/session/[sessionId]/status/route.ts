@@ -5,6 +5,7 @@ import connectDB from "@/lib/db/connection";
 import InterviewSession from "@/lib/db/models/InterviewSession";
 import ResumeProfile from "@/lib/db/models/ResumeProfile";
 import JobDescription from "@/lib/db/models/JobDescription";
+import Question from "@/lib/db/models/Question";
 
 /**
  * GET /api/session/[sessionId]/status
@@ -53,6 +54,12 @@ export async function GET(
         .lean(),
     ]);
 
+    // Count generated questions (if any)
+    const questionsGenerated = await Question.countDocuments({
+      sessionId,
+      isRemoved: false,
+    });
+
     return NextResponse.json({
       status: interviewSession.status,
       resumeStatus: resume?.status || "unknown",
@@ -62,6 +69,7 @@ export async function GET(
         resume?.failureReason ||
         jd?.failureReason ||
         null,
+      questionsGenerated,
     });
   } catch (error) {
     console.error("Session status error:", error);
