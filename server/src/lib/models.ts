@@ -102,7 +102,16 @@ if (!mongoose.models.InterviewSession) {
         jobDescriptionId: { type: Schema.Types.ObjectId, ref: "JobDescription", required: true },
         status: {
           type: String,
-          enum: ["parsing", "generating_questions", "ready", "in_progress", "completed", "parse_failed"],
+          enum: [
+            "parsing",
+            "generating_questions",
+            "questions_ready",
+            "questions_failed",
+            "ready",
+            "in_progress",
+            "completed",
+            "parse_failed",
+          ],
           default: "parsing",
         },
         failureReason: { type: String, default: null },
@@ -111,6 +120,24 @@ if (!mongoose.models.InterviewSession) {
       { timestamps: true }
     )
   );
+}
+
+// ── Question ─────────────────────────────────────────────────────
+if (!mongoose.models.Question) {
+  const QuestionSchema = new Schema(
+    {
+      sessionId: { type: Schema.Types.ObjectId, ref: "InterviewSession", required: true, index: true },
+      type: { type: String, enum: ["hr", "technical", "behavioral"], required: true },
+      text: { type: String, required: true },
+      rationale: { type: String, required: true },
+      order: { type: Number, required: true },
+      isRemoved: { type: Boolean, default: false },
+    },
+    { timestamps: true }
+  );
+
+  QuestionSchema.index({ sessionId: 1, order: 1 });
+  mongoose.model("Question", QuestionSchema);
 }
 
 console.log("[Models] All Mongoose models registered");
