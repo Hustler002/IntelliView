@@ -7,6 +7,7 @@ import { connectDB } from "./lib/db";
 import { createParseResumeWorker } from "./workers/parseResume";
 import { createParseJDWorker } from "./workers/parseJD";
 import { createGenerateQuestionsWorker } from "./workers/generateQuestions";
+import { createTranscribeEvaluateWorker } from "./workers/transcribeAndEvaluate";
 import { setGenerateQuestionsQueue } from "./lib/sessionStatusUpdater";
 
 // Register Mongoose models before any worker starts processing.
@@ -54,12 +55,32 @@ async function main() {
   // Wire the queue into the status updater for auto-chaining
   setGenerateQuestionsQueue(generateQuestionsQueue);
 
+  // ── Create the transcribe-evaluate queue ───────────────────────
+  const transcribeEvaluateQueue = new Queue("transcribe-evaluate", {
+    connection: {
+      host: new URL(redisUrl).hostname || "localhost",
+      port: parseInt(new URL(redisUrl).port || "6379", 10),
+      password: new URL(redisUrl).password || undefined,
+      maxRetriesPerRequest: null,
+    },
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5000, // 5s → 10s → 20s (STT + LLM calls are the heaviest pipeline)
+      },
+      removeOnComplete: { count: 200 },
+      removeOnFail: { count: 50 },
+    },
+  });
+
   // ── Start BullMQ Workers ──────────────────────────────────────
   const resumeWorker = createParseResumeWorker(redisConnection);
   const jdWorker = createParseJDWorker(redisConnection);
   const questionsWorker = createGenerateQuestionsWorker(redisConnection);
+  const transcribeEvalWorker = createTranscribeEvaluateWorker(redisConnection);
 
-  console.log("[Server] Workers started: parse-resume, parse-jd, generate-questions");
+  console.log("[Server] Workers started: parse-resume, parse-jd, generate-questions, transcribe-evaluate");
 
   // ── Express App (health check + future SSE endpoint) ──────────
   const app = express();
@@ -74,6 +95,7 @@ async function main() {
         parseResume: resumeWorker.isRunning(),
         parseJD: jdWorker.isRunning(),
         generateQuestions: questionsWorker.isRunning(),
+        transcribeEvaluate: transcribeEvalWorker.isRunning(),
       },
       timestamp: new Date().toISOString(),
     });
@@ -91,7 +113,9 @@ async function main() {
     await resumeWorker.close();
     await jdWorker.close();
     await questionsWorker.close();
+    await transcribeEvalWorker.close();
     await generateQuestionsQueue.close();
+    await transcribeEvaluateQueue.close();
     await redisConnection.quit();
     process.exit(0);
   };

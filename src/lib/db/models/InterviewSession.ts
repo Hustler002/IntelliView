@@ -7,6 +7,7 @@ export type SessionStatus =
   | "questions_failed"
   | "ready"
   | "in_progress"
+  | "evaluating"
   | "completed"
   | "parse_failed";
 
@@ -48,6 +49,7 @@ const InterviewSessionSchema = new Schema<IInterviewSession>(
         "questions_failed",
         "ready",
         "in_progress",
+        "evaluating",
         "completed",
         "parse_failed",
       ],
