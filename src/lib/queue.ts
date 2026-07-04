@@ -84,3 +84,24 @@ export function getGenerateQuestionsQueue(): Queue {
   }
   return _generateQuestionsQueue;
 }
+
+// ── Transcribe and Evaluate Queue ────────────────────────────────
+let _transcribeEvaluateQueue: Queue | null = null;
+
+export function getTranscribeEvaluateQueue(): Queue {
+  if (!_transcribeEvaluateQueue) {
+    _transcribeEvaluateQueue = new Queue("transcribe-evaluate", {
+      connection: getConnectionConfig(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 5000, // 5s → 10s → 20s (STT + LLM calls take time)
+        },
+        removeOnComplete: { count: 200 },
+        removeOnFail: { count: 100 },
+      },
+    });
+  }
+  return _transcribeEvaluateQueue;
+}

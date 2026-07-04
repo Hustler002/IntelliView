@@ -7,6 +7,7 @@ import { connectDB } from "./lib/db";
 import { createParseResumeWorker } from "./workers/parseResume";
 import { createParseJDWorker } from "./workers/parseJD";
 import { createGenerateQuestionsWorker } from "./workers/generateQuestions";
+import { createTranscribeEvaluateWorker } from "./workers/transcribeAndEvaluate";
 import { setGenerateQuestionsQueue } from "./lib/sessionStatusUpdater";
 
 // Register Mongoose models before any worker starts processing.
@@ -58,8 +59,9 @@ async function main() {
   const resumeWorker = createParseResumeWorker(redisConnection);
   const jdWorker = createParseJDWorker(redisConnection);
   const questionsWorker = createGenerateQuestionsWorker(redisConnection);
+  const transcribeWorker = createTranscribeEvaluateWorker(redisConnection);
 
-  console.log("[Server] Workers started: parse-resume, parse-jd, generate-questions");
+  console.log("[Server] Workers started: parse-resume, parse-jd, generate-questions, transcribe-evaluate");
 
   // ── Express App (health check + future SSE endpoint) ──────────
   const app = express();
@@ -74,6 +76,7 @@ async function main() {
         parseResume: resumeWorker.isRunning(),
         parseJD: jdWorker.isRunning(),
         generateQuestions: questionsWorker.isRunning(),
+        transcribeEvaluate: transcribeWorker.isRunning(),
       },
       timestamp: new Date().toISOString(),
     });
@@ -91,6 +94,7 @@ async function main() {
     await resumeWorker.close();
     await jdWorker.close();
     await questionsWorker.close();
+    await transcribeWorker.close();
     await generateQuestionsQueue.close();
     await redisConnection.quit();
     process.exit(0);

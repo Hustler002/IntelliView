@@ -109,6 +109,7 @@ if (!mongoose.models.InterviewSession) {
             "questions_failed",
             "ready",
             "in_progress",
+            "evaluating",
             "completed",
             "parse_failed",
           ],
@@ -138,6 +139,49 @@ if (!mongoose.models.Question) {
 
   QuestionSchema.index({ sessionId: 1, order: 1 });
   mongoose.model("Question", QuestionSchema);
+}
+
+// ── Answer ─────────────────────────────────────────────────────────
+if (!mongoose.models.Answer) {
+  const AnswerSchema = new Schema(
+    {
+      questionId: { type: Schema.Types.ObjectId, ref: "Question", required: true, index: true },
+      sessionId: { type: Schema.Types.ObjectId, ref: "InterviewSession", required: true, index: true },
+      audioUrl: { type: String, required: true },
+      audioKey: { type: String, required: true },
+      transcript: { type: String, default: null },
+      durationSeconds: { type: Number, required: true, min: 0 },
+      status: {
+        type: String,
+        enum: ["uploaded", "transcribing", "evaluating", "completed", "failed"],
+        default: "uploaded",
+      },
+      failureReason: { type: String, default: null },
+    },
+    { timestamps: true }
+  );
+
+  AnswerSchema.index({ questionId: 1 }, { unique: true });
+  mongoose.model("Answer", AnswerSchema);
+}
+
+// ── Evaluation ─────────────────────────────────────────────────────
+if (!mongoose.models.Evaluation) {
+  mongoose.model(
+    "Evaluation",
+    new Schema(
+      {
+        answerId: { type: Schema.Types.ObjectId, ref: "Answer", required: true, unique: true },
+        sessionId: { type: Schema.Types.ObjectId, ref: "InterviewSession", required: true, index: true },
+        correctnessScore: { type: Number, required: true, min: 1, max: 10 },
+        communicationScore: { type: Number, required: true, min: 1, max: 10 },
+        confidenceScore: { type: Number, required: true, min: 1, max: 10 },
+        feedback: { type: String, required: true },
+        improvementNotes: { type: String, required: true },
+      },
+      { timestamps: true }
+    )
+  );
 }
 
 console.log("[Models] All Mongoose models registered");
