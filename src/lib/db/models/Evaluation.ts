@@ -17,6 +17,7 @@ import mongoose, { Schema, Document, Model, Types } from "mongoose";
 export interface IEvaluation extends Document {
   _id: Types.ObjectId;
   answerId: Types.ObjectId;
+  sessionId: Types.ObjectId; // Denormalized for session-level aggregation
   correctnessScore: number;
   communicationScore: number;
   confidenceScore: number;
@@ -33,6 +34,12 @@ const EvaluationSchema = new Schema<IEvaluation>(
       ref: "Answer",
       required: true,
       unique: true, // One evaluation per answer — enforced at DB level
+    },
+    sessionId: {
+      type: Schema.Types.ObjectId,
+      ref: "InterviewSession",
+      required: true,
+      index: true,
     },
     correctnessScore: {
       type: Number,

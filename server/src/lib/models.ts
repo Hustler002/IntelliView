@@ -141,35 +141,38 @@ if (!mongoose.models.Question) {
   mongoose.model("Question", QuestionSchema);
 }
 
-// ── Answer ───────────────────────────────────────────────────────
+// ── Answer ─────────────────────────────────────────────────────────
 if (!mongoose.models.Answer) {
-  mongoose.model(
-    "Answer",
-    new Schema(
-      {
-        questionId: { type: Schema.Types.ObjectId, ref: "Question", required: true, index: true },
-        sessionId: { type: Schema.Types.ObjectId, ref: "InterviewSession", required: true, index: true },
-        audioUrl: { type: String, required: true },
-        transcript: { type: String, default: null },
-        durationSeconds: { type: Number, default: null },
-        sentimentData: { type: Schema.Types.Mixed, default: null },
-        status: {
-          type: String,
-          enum: ["pending", "transcribing", "transcribed", "evaluating", "evaluated", "failed"],
-          default: "pending",
-        },
-        failureReason: { type: String, default: null },
+  const AnswerSchema = new Schema(
+    {
+      questionId: { type: Schema.Types.ObjectId, ref: "Question", required: true, index: true },
+      sessionId: { type: Schema.Types.ObjectId, ref: "InterviewSession", required: true, index: true },
+      audioUrl: { type: String, required: true },
+      audioKey: { type: String, required: true },
+      transcript: { type: String, default: null },
+      durationSeconds: { type: Number, default: null },
+      sentimentData: { type: Schema.Types.Mixed, default: null },
+      status: {
+        type: String,
+        enum: ["pending", "uploaded", "transcribing", "transcribed", "evaluating", "evaluated", "completed", "failed"],
+        default: "pending",
       },
-      { timestamps: true }
-    )
+      failureReason: { type: String, default: null },
+    },
+    { timestamps: true }
   );
+
+  AnswerSchema.index({ questionId: 1 }, { unique: true });
+  AnswerSchema.index({ sessionId: 1, createdAt: 1 });
+  mongoose.model("Answer", AnswerSchema);
 }
 
-// ── Evaluation ───────────────────────────────────────────────────
+// ── Evaluation ─────────────────────────────────────────────────────
 if (!mongoose.models.Evaluation) {
   const EvaluationSchema = new Schema(
     {
       answerId: { type: Schema.Types.ObjectId, ref: "Answer", required: true, unique: true },
+      sessionId: { type: Schema.Types.ObjectId, ref: "InterviewSession", required: true, index: true },
       correctnessScore: { type: Number, required: true, min: 1, max: 10 },
       communicationScore: { type: Number, required: true, min: 1, max: 10 },
       confidenceScore: { type: Number, required: true, min: 1, max: 10 },
@@ -181,5 +184,4 @@ if (!mongoose.models.Evaluation) {
 
   mongoose.model("Evaluation", EvaluationSchema);
 }
-
 console.log("[Models] All Mongoose models registered");

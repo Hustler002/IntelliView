@@ -6,23 +6,26 @@ import mongoose, { Schema, Document, Model, Types } from "mongoose";
  * The audio is uploaded to S3 before the transcribe-evaluate worker processes it.
  * The worker fills in transcript, durationSeconds, and sentimentData as it runs.
  *
- * Status flow: pending → transcribing → transcribed → evaluating → evaluated
+ * Status flow: pending/uploaded → transcribing → transcribed → evaluating → evaluated/completed
  *              (any step can → failed)
  */
 
 export type AnswerStatus =
   | "pending"
+  | "uploaded"
   | "transcribing"
   | "transcribed"
   | "evaluating"
   | "evaluated"
+  | "completed"
   | "failed";
 
 export interface IAnswer extends Document {
   _id: Types.ObjectId;
   questionId: Types.ObjectId;
   sessionId: Types.ObjectId; // Denormalized for "all answers in session" queries
-  audioUrl: string; // S3 key, not a full URL — use getSignedDownloadUrl() for access
+  audioUrl: string; 
+  audioKey: string; // S3 key — needed for cleanup/deletion
   transcript: string | null;
   durationSeconds: number | null;
   sentimentData: Record<string, unknown> | null; // Raw STT provider metadata
@@ -48,6 +51,10 @@ const AnswerSchema = new Schema<IAnswer>(
     },
     audioUrl: {
       type: String,
+      required: [true, "Audio URL is required"],
+    },
+    audioKey: {
+      type: String,
       required: [true, "Audio S3 key is required"],
     },
     transcript: {
@@ -64,7 +71,7 @@ const AnswerSchema = new Schema<IAnswer>(
     },
     status: {
       type: String,
-      enum: ["pending", "transcribing", "transcribed", "evaluating", "evaluated", "failed"],
+      enum: ["pending", "uploaded", "transcribing", "transcribed", "evaluating", "evaluated", "completed", "failed"],
       default: "pending",
     },
     failureReason: {
@@ -77,6 +84,8 @@ const AnswerSchema = new Schema<IAnswer>(
   }
 );
 
+// One answer per question (prevents duplicate submissions)
+AnswerSchema.index({ questionId: 1 }, { unique: true });
 // Compound index: get all answers for a session, ordered by creation time
 AnswerSchema.index({ sessionId: 1, createdAt: 1 });
 

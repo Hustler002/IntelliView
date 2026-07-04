@@ -77,4 +77,17 @@ export function buildResumeKey(
   return `resumes/${userId}/${Date.now()}-${sanitized}`;
 }
 
+/**
+ * Build a consistent S3 key for audio answer uploads.
+ * Format: audio/{sessionId}/{questionId}.{ext}
+ */
+export function buildAudioKey(
+  sessionId: string,
+  questionId: string,
+  mimeType: string
+): string {
+  const ext = mimeType.includes("webm") ? "webm" : "wav";
+  return `audio/${sessionId}/${questionId}.${ext}`;
+}
+
 export { s3Client, BUCKET };
