@@ -13,6 +13,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1078.0",
     "@aws-sdk/s3-request-presigner": "^3.1078.0",
+    "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.79.2",
     "file-type": "^16.5.4",
@@ -22,9 +23,11 @@
     "mongoose": "^9.7.3",
     "next": "16.2.10",
     "next-auth": "^4.24.14",
+    "openai": "^6.45.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-dropzone": "^15.0.0",
+    "recharts": "^3.9.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

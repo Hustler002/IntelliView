@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
@@ -10,19 +10,91 @@ import {
   Mic,
   BarChart3,
   Plus,
+  TrendingUp,
+  CheckCircle2,
+  Clock,
+  Loader2,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 
 /**
  * Dashboard — the main landing page for authenticated users.
  *
- * Shows a welcome message, quick-start CTA, and an overview of the process.
- * Past sessions list is a placeholder for Module 2.
+ * Shows a welcome message, quick-start CTA, how-it-works overview,
+ * and a real list of recent interview sessions (not a placeholder).
  */
+
+interface SessionSummary {
+  id: string;
+  status: string;
+  createdAt: string;
+  role: string;
+  overallScore: number | null;
+}
+
+const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+  completed: {
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    label: "Completed",
+    color: "text-success",
+  },
+  evaluating: {
+    icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />,
+    label: "Evaluating",
+    color: "text-amber-500",
+  },
+  in_progress: {
+    icon: <Mic className="w-3.5 h-3.5" />,
+    label: "In progress",
+    color: "text-sky-400",
+  },
+  questions_ready: {
+    icon: <Clock className="w-3.5 h-3.5" />,
+    label: "Ready",
+    color: "text-navy-300",
+  },
+};
 
 export default function DashboardPage() {
   const { data: session } = useSession();
   const firstName = session?.user?.name?.split(" ")[0] || "there";
+
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchSessions() {
+      try {
+        const res = await fetch("/api/sessions");
+        if (res.ok) {
+          const data = await res.json();
+          setSessions(data.sessions?.slice(0, 5) || []);
+        }
+      } catch {
+        // Silently fail — dashboard still shows the rest
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchSessions();
+  }, []);
+
+  // Determine the link for a session based on its status
+  function getSessionLink(s: SessionSummary): string {
+    switch (s.status) {
+      case "completed":
+        return `/interview/${s.id}/results`;
+      case "evaluating":
+        return `/interview/${s.id}/processing`;
+      case "in_progress":
+        return `/interview/${s.id}/live`;
+      case "questions_ready":
+      case "ready":
+        return `/interview/${s.id}/live`;
+      default:
+        return `/interview/${s.id}/preparing`;
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto animate-fade-in">
@@ -117,27 +189,87 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Past Sessions Placeholder ── */}
+      {/* ── Recent Sessions ── */}
       <div>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-white">Recent Sessions</h2>
+          {sessions.length > 0 && (
+            <Link
+              href="/dashboard/progress"
+              className="text-xs text-amber-500 hover:text-amber-400 font-medium inline-flex items-center gap-1"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              View All &amp; Progress
+            </Link>
+          )}
         </div>
-        <div className="glass-card p-12 text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-navy-800 flex items-center justify-center mb-4">
-            <BarChart3 className="w-7 h-7 text-navy-500" />
+
+        {isLoading && (
+          <div className="glass-card p-8 text-center">
+            <Loader2 className="w-6 h-6 text-amber-500 animate-spin mx-auto" />
           </div>
-          <h3 className="text-navy-200 font-medium mb-1">
-            No sessions yet
-          </h3>
-          <p className="text-sm text-navy-500 mb-5">
-            Start your first mock interview to see your results here.
-          </p>
-          <Link href="/upload">
-            <Button variant="secondary" size="sm">
-              Start your first session
-            </Button>
-          </Link>
-        </div>
+        )}
+
+        {!isLoading && sessions.length === 0 && (
+          <div className="glass-card p-12 text-center">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-navy-800 flex items-center justify-center mb-4">
+              <BarChart3 className="w-7 h-7 text-navy-500" />
+            </div>
+            <h3 className="text-navy-200 font-medium mb-1">
+              No sessions yet
+            </h3>
+            <p className="text-sm text-navy-500 mb-5">
+              Start your first mock interview to see your results here.
+            </p>
+            <Link href="/upload">
+              <Button variant="secondary" size="sm">
+                Start your first session
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {!isLoading && sessions.length > 0 && (
+          <div className="glass-card overflow-hidden divide-y divide-white/5">
+            {sessions.map((s) => {
+              const statusCfg =
+                STATUS_CONFIG[s.status] || STATUS_CONFIG.questions_ready;
+              return (
+                <Link
+                  key={s.id}
+                  href={getSessionLink(s)}
+                  className="flex items-center gap-4 p-4 hover:bg-white/[0.02] transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {s.role}
+                    </p>
+                    <p className="text-xs text-navy-500">
+                      {new Date(s.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-medium ${statusCfg.color}`}
+                  >
+                    {statusCfg.icon}
+                    {statusCfg.label}
+                  </span>
+
+                  {s.overallScore !== null && (
+                    <span className="text-sm font-semibold text-amber-500 w-12 text-right">
+                      {s.overallScore}/10
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

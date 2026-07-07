@@ -18,6 +18,8 @@ export interface IInterviewSession extends Document {
   jobDescriptionId: Types.ObjectId;
   status: SessionStatus;
   failureReason?: string;
+  improvementRoadmap?: string[]; // Cached LLM-synthesized roadmap (set once by /api/.../roadmap)
+  overallScore?: number; // Cached average across all dimensions and questions
   createdAt: Date;
   completedAt?: Date;
 }
@@ -58,6 +60,16 @@ const InterviewSessionSchema = new Schema<IInterviewSession>(
     failureReason: {
       type: String,
       default: null,
+    },
+    improvementRoadmap: {
+      type: [String],
+      default: undefined, // Not set until roadmap synthesis runs
+    },
+    overallScore: {
+      type: Number,
+      default: undefined,
+      min: 0,
+      max: 10,
     },
     completedAt: {
       type: Date,

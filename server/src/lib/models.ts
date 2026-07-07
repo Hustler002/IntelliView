@@ -116,6 +116,8 @@ if (!mongoose.models.InterviewSession) {
           default: "parsing",
         },
         failureReason: { type: String, default: null },
+        improvementRoadmap: { type: [String], default: undefined },
+        overallScore: { type: Number, default: undefined, min: 0, max: 10 },
         completedAt: { type: Date, default: null },
       },
       { timestamps: true }
