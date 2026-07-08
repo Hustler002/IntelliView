@@ -15,12 +15,14 @@ import { Queue } from "bullmq";
 function getConnectionConfig() {
   const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
   const url = new URL(redisUrl);
+  const useTls = url.protocol === "rediss:";
 
   return {
     host: url.hostname || "localhost",
     port: parseInt(url.port || "6379", 10),
     password: url.password || undefined,
     maxRetriesPerRequest: null as null, // Required by BullMQ
+    ...(useTls ? { tls: {} } : {}), // Upstash and other managed Redis require TLS
   };
 }
 
@@ -105,3 +107,38 @@ export function getTranscribeEvaluateQueue(): Queue {
   }
   return _transcribeEvaluateQueue;
 }
+
+// ── Synthesize-Roadmap Queue ─────────────────────────────────────
+let _synthesizeRoadmapQueue: Queue | null = null;
+
+export function getSynthesizeRoadmapQueue(): Queue {
+  if (!_synthesizeRoadmapQueue) {
+    _synthesizeRoadmapQueue = new Queue("synthesize-roadmap", {
+      connection: getConnectionConfig(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 3000, // 3s → 6s → 12s (single LLM call)
+        },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
+      },
+    });
+  }
+  return _synthesizeRoadmapQueue;
+}
+
+/**
+ * All queue names in the system. Used by the admin jobs page
+ * to enumerate and query job status across all queues.
+ */
+export const ALL_QUEUE_NAMES = [
+  "parse-resume",
+  "parse-jd",
+  "generate-questions",
+  "transcribe-evaluate",
+  "synthesize-roadmap",
+] as const;
+
+export type QueueName = (typeof ALL_QUEUE_NAMES)[number];

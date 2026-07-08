@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import connectDB from "@/lib/db/connection";
-import InterviewSession from "@/lib/db/models/InterviewSession";
-import ResumeProfile from "@/lib/db/models/ResumeProfile";
-import JobDescription from "@/lib/db/models/JobDescription";
-import Question from "@/lib/db/models/Question";
+import {
+  getSessionJobStatus,
+  verifySessionOwnership,
+} from "@/lib/jobStatus";
 
 /**
  * GET /api/session/[sessionId]/status
@@ -14,7 +13,8 @@ import Question from "@/lib/db/models/Question";
  * individual statuses of resume and JD parsing. Auth-gated: only the
  * session owner can check status.
  *
- * Used by the waiting screen to poll progress.
+ * Uses the shared jobStatus helper — not inline queries — so every
+ * consumer of session status reads from the same canonical source.
  */
 export async function GET(
   req: NextRequest,
@@ -28,48 +28,26 @@ export async function GET(
 
     const { sessionId } = await params;
 
-    await connectDB();
+    // Auth check: only session owner can view status
+    const isOwner = await verifySessionOwnership(sessionId, session.user.id);
+    if (!isOwner) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-    const interviewSession = await InterviewSession.findById(sessionId).lean();
-
-    if (!interviewSession) {
+    const status = await getSessionJobStatus(sessionId);
+    if (!status) {
       return NextResponse.json(
         { error: "Session not found" },
         { status: 404 }
       );
     }
 
-    // Auth check: only session owner can view status
-    if (interviewSession.userId.toString() !== session.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Fetch individual parsing statuses for the progress indicator
-    const [resume, jd] = await Promise.all([
-      ResumeProfile.findById(interviewSession.resumeProfileId)
-        .select("status failureReason")
-        .lean(),
-      JobDescription.findById(interviewSession.jobDescriptionId)
-        .select("status failureReason")
-        .lean(),
-    ]);
-
-    // Count generated questions (if any)
-    const questionsGenerated = await Question.countDocuments({
-      sessionId,
-      isRemoved: false,
-    });
-
     return NextResponse.json({
-      status: interviewSession.status,
-      resumeStatus: resume?.status || "unknown",
-      jdStatus: jd?.status || "unknown",
-      failureReason:
-        interviewSession.failureReason ||
-        resume?.failureReason ||
-        jd?.failureReason ||
-        null,
-      questionsGenerated,
+      status: status.sessionStatus,
+      resumeStatus: status.resumeStatus,
+      jdStatus: status.jdStatus,
+      failureReason: status.failureReason,
+      questionsGenerated: status.questionsGenerated,
     });
   } catch (error) {
     console.error("Session status error:", error);

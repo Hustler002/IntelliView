@@ -15,8 +15,11 @@ const QUESTION_GENERATION_SYSTEM_PROMPT = `You are an experienced technical inte
 - 3 HR/culture-fit questions, grounded in the candidate's actual background (e.g. referencing a specific project or gap, not generic 'tell me about yourself')
 - 4 technical questions that probe the overlap between the candidate's stated skills and the JD's required skills — include at least one question on a skill the JD requires but the resume doesn't clearly show, to test depth
 - 3 behavioral questions (STAR-format friendly) tied to the seniority level implied by the JD
-Return strictly valid JSON: an array of objects with fields \`type\`, \`text\`, and \`rationale\` (one sentence on why this question was chosen for this candidate/role pair).
-No prose outside the JSON.`;
+Return strictly valid JSON: an array of objects with these exact fields:
+- "type": one of exactly these three string values: "hr", "technical", "behavioral" (lowercase, no other values allowed)
+- "text": the interview question text
+- "rationale": one sentence on why this question was chosen for this candidate/role pair
+No prose outside the JSON. Example format: [{"type":"hr","text":"...","rationale":"..."}, ...]`;
 
 // ── Retry Suffix ─────────────────────────────────────────────────
 // Appended to the user prompt on the second LLM attempt if validation fails.

@@ -10,13 +10,30 @@ import { z } from "zod";
  * Exported separately from the worker so it can be unit-tested in isolation.
  */
 
+/**
+ * Normalizes LLM type output to our strict enum.
+ * LLMs commonly return variations like "HR", "Culture-fit", "Technical/Problem-Solving", etc.
+ */
+function normalizeType(val: unknown): string {
+  if (typeof val !== "string") return String(val);
+  const lower = val.toLowerCase().trim();
+  // Map common LLM variations to canonical types
+  if (lower === "hr" || lower.includes("culture") || lower.includes("hr")) return "hr";
+  if (lower.includes("technical") || lower.includes("tech")) return "technical";
+  if (lower.includes("behavioral") || lower.includes("behaviour") || lower.includes("star")) return "behavioral";
+  return lower; // fallback — will fail Zod enum if truly unknown
+}
+
 const QuestionItemSchema = z.object({
-  type: z.enum(["hr", "technical", "behavioral"], {
-    errorMap: () => ({
-      message:
-        'Question type must be "hr", "technical", or "behavioral"',
-    }),
-  }),
+  type: z.preprocess(
+    normalizeType,
+    z.enum(["hr", "technical", "behavioral"], {
+      errorMap: () => ({
+        message:
+          'Question type must be "hr", "technical", or "behavioral"',
+      }),
+    })
+  ),
   text: z
     .string()
     .min(10, "Question text must be at least 10 characters"),
