@@ -2,21 +2,50 @@ import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 /**
- * Provider-selectable LLM client.
+ * Provider-selectable LLM client with automatic model fallback.
  *
- * Reads LLM_PROVIDER env var to select between OpenAI and Google Gemini.
- * Exposes a single function callLLM(systemPrompt, userPrompt) that
- * abstracts away the provider differences.
+ * PERMANENT FIX for free-tier quota exhaustion:
+ * Instead of hardcoding a single Gemini model, we maintain a fallback
+ * chain. If one model returns 429 (rate limit), we automatically try
+ * the next model in the chain. Each model has its own separate quota
+ * bucket on Google's free tier, so this effectively multiplies our
+ * available daily requests by the number of models in the chain.
  *
- * Design decision: we don't use a class/strategy pattern here — a simple
- * switch is more readable and there are only two providers. If we add more,
- * refactor to a strategy map.
+ * The fallback chain is configurable via GEMINI_MODEL env var (comma-separated)
+ * or uses the default chain below.
  */
 
 type LLMProvider = "openai" | "gemini";
 
 const provider: LLMProvider =
   (process.env.LLM_PROVIDER as LLMProvider) || "openai";
+
+/**
+ * Default Gemini model fallback chain.
+ *
+ * Order: cheapest/fastest first → heavier models as fallback.
+ * Each model has its own independent quota bucket on Google's free tier.
+ * If GEMINI_MODEL env var is set (comma-separated), that overrides this.
+ */
+const DEFAULT_GEMINI_FALLBACK_CHAIN = [
+  "gemini-2.0-flash-lite",   // Cheapest, highest free-tier limit
+  "gemini-2.5-flash-lite",   // Light, separate quota
+  "gemini-2.5-flash",        // Mid-tier
+  "gemini-2.0-flash",        // Solid fallback
+  "gemini-3.5-flash",        // Newest generation
+];
+
+function getGeminiFallbackChain(): string[] {
+  const envModels = process.env.GEMINI_MODEL;
+  if (envModels && envModels.includes(",")) {
+    return envModels.split(",").map((m) => m.trim()).filter(Boolean);
+  }
+  if (envModels) {
+    // Single model specified — still add fallbacks after it
+    return [envModels, ...DEFAULT_GEMINI_FALLBACK_CHAIN.filter((m) => m !== envModels)];
+  }
+  return DEFAULT_GEMINI_FALLBACK_CHAIN;
+}
 
 // ── OpenAI Client ────────────────────────────────────────────────
 let openaiClient: OpenAI | null = null;
@@ -50,6 +79,18 @@ function getGeminiClient(): GoogleGenerativeAI {
   return geminiClient;
 }
 
+// ── Rate Limit Detection ─────────────────────────────────────────
+
+function isRateLimitError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes("429") ||
+    msg.includes("Too Many Requests") ||
+    msg.includes("quota") ||
+    msg.includes("RESOURCE_EXHAUSTED")
+  );
+}
+
 // ── Unified Interface ────────────────────────────────────────────
 
 export class LLMError extends Error {
@@ -67,7 +108,10 @@ export class LLMError extends Error {
  * Call the configured LLM with a system prompt and user prompt.
  * Returns the raw text response.
  *
- * @throws LLMError if the API call fails or returns no content
+ * For Gemini: automatically falls back through the model chain
+ * if a model returns a 429 rate limit error.
+ *
+ * @throws LLMError if the API call fails on ALL models or returns no content
  */
 export async function callLLM(
   systemPrompt: string,
@@ -78,7 +122,7 @@ export async function callLLM(
       case "openai":
         return await callOpenAI(systemPrompt, userPrompt);
       case "gemini":
-        return await callGemini(systemPrompt, userPrompt);
+        return await callGeminiWithFallback(systemPrompt, userPrompt);
       default:
         throw new LLMError(
           `Unknown LLM provider: ${provider}. Set LLM_PROVIDER to 'openai' or 'gemini'.`,
@@ -119,36 +163,77 @@ async function callOpenAI(
   return content;
 }
 
-async function callGemini(
+/**
+ * Gemini call with automatic model fallback.
+ *
+ * Tries each model in the fallback chain. If a model returns a 429
+ * rate limit error, logs a warning and tries the next model. Only
+ * throws if ALL models are exhausted.
+ */
+async function callGeminiWithFallback(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
   const client = getGeminiClient();
-  const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash-lite",
-    generationConfig: {
-      temperature: 0.3,
-      responseMimeType: "application/json",
-    },
-  });
+  const models = getGeminiFallbackChain();
+  const errors: string[] = [];
 
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: `${systemPrompt}\n\n---\n\n${userPrompt}` },
+  for (const modelName of models) {
+    try {
+      const model = client.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.3,
+          responseMimeType: "application/json",
+        },
+      });
+
+      const result = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: `${systemPrompt}\n\n---\n\n${userPrompt}` },
+            ],
+          },
         ],
-      },
-    ],
-  });
+      });
 
-  const content = result.response.text();
-  if (!content) {
-    throw new LLMError("Gemini returned an empty response", "gemini");
+      const content = result.response.text();
+      if (!content) {
+        throw new Error("Gemini returned an empty response");
+      }
+
+      // Log which model succeeded (useful for debugging quota issues)
+      console.log(`[LLM] ✓ Gemini call succeeded with model: ${modelName}`);
+      return content;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      if (isRateLimitError(error)) {
+        console.warn(
+          `[LLM] ⚠ Model ${modelName} rate-limited, trying next fallback...`
+        );
+        errors.push(`${modelName}: rate-limited`);
+        continue; // Try next model
+      }
+
+      // Non-rate-limit error — don't fallback, throw immediately
+      throw new LLMError(
+        `LLM call failed: ${errorMsg}`,
+        `gemini/${modelName}`,
+        error
+      );
+    }
   }
 
-  return content;
+  // All models exhausted
+  throw new LLMError(
+    `All Gemini models rate-limited. Tried: ${errors.join("; ")}. ` +
+      `Free tier daily quota exhausted across all fallback models. ` +
+      `Either wait for quota reset (midnight PT) or add billing to your Google AI Studio project.`,
+    "gemini",
+  );
 }
 
 export { provider as currentProvider };
